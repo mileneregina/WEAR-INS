@@ -1,0 +1,1071 @@
+# Clear the workspace by removing all objects
+rm(list = ls())
+# List all objects in the environment
+ls()
+# Run garbage collection to free memory
+gc()
+
+# Load necessary libraries
+library(glmnet)
+library(corrplot)
+library(randomForest)
+library(formattable)
+library(boot)
+library(pls)
+library(GGally)
+library(lavaan)
+library(dplyr)
+library(glmnet)
+library(plotmo)
+library(MASS)
+library(leaps)
+library(rpart)
+library(rpart.plot)
+library(mlbench)
+library(caret)
+library(tidyverse)
+library(readxl)
+library(broom)
+library(knitr)
+library(ggplot2)
+library(gridExtra)
+library(ggfortify)
+library(car)
+library(readr)
+library(xtable)
+library(gtable)
+library(caret)
+library(dplyr)
+library(arrow)
+library(ranger)
+
+
+
+# Initialize variables to store Mean Squared Errors (MSE) for different models
+mse_forest_gold = NULL
+mse_tree_gold  = NULL
+mse_lm_gold = NULL
+mse_lasso_gold = NULL
+
+mse_forest_weight_ins = NULL
+mse.tree.weight_ins= NULL
+mse.lm.weight_ins= NULL
+mse.lasso.weight_ins = NULL
+
+mse_forest_weight = NULL
+mse.tree.weight= NULL
+mse.lm.weight= NULL
+mse.lasso.weight = NULL
+
+mse_forest_mean_specialist = NULL
+mse.tree.mean= NULL
+mse.lm.mean= NULL
+mse_lasso_mean_specialist = NULL
+
+mse.mod1 =NULL
+mse.mod2 =NULL
+mse.mod3 =NULL
+
+# Initialize variables to store Standard Errors (SE) for different models
+se_forest_gold = NULL
+se_tree_gold  = NULL
+se_lm_gold = NULL
+se_lasso_gold = NULL
+
+se_forest_weight_ins = NULL
+se.tree.weight_ins= NULL
+se.lm.weight_ins= NULL
+se.lasso.weight_ins = NULL
+
+se_forest_weight = NULL
+se.tree.weight= NULL
+se.lm.weight= NULL
+se.lasso.weight = NULL
+
+se_forest_mean_specialist = NULL
+se_tree_mean = NULL
+se_lm_mean = NULL
+se_lasso_mean = NULL
+
+
+se_forest_mean = NULL
+se.tree.mean= NULL
+se.lm.mean= NULL
+se.lasso.mean = NULL
+
+se.mod1 =NULL
+se.mod2 =NULL
+se.mod3 =NULL
+
+
+
+# Define key parameters
+count_row <- 50000 # Number of rows in dataset
+count_specialist <- 4 # Number of specialists
+count_varibles <- 6 # Number of variables in dataset
+tamanho_matrix <- (count_varibles-4) * count_row # Matrix size calculation
+percentual_train <- 0.6# Percentage for training data
+percentual_validation <- 0.1 # Percentage for validation data
+percentual_test <- 1 - percentual_train - percentual_validation # Remaining percentage for testing
+total_mse = 50 # Placeholder for MSE calculations
+
+# Create matrices to store specialist predictions and deviations
+specialist = matrix(data = NA, nrow = count_row, ncol = count_specialist)
+
+deviation.specialist = matrix(data = NA, nrow = count_row, ncol = count_specialist)
+
+lambdas = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+
+weight.specialist.reg.linear = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+weight.specialist.forest = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+weight.specialist.tree = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+weight.specialist.lasso = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+
+weight.ins.specialist.reg.linear = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+weight.ins.specialist.forest = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+weight.ins.specialist.tree = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+weight.ins.specialist.lasso = matrix(data = NA, nrow = total_mse, ncol = count_specialist)
+
+mean_var_est_esp = matrix(data = NA, nrow =1, ncol = count_specialist)
+mean_ins_var_esp_lasso = matrix(data = NA, nrow =total_mse, ncol = count_specialist)
+mean_ins_var_esp_reg = matrix(data = NA, nrow =total_mse, ncol = count_specialist)
+mean_ins_var_esp_arv = matrix(data = NA, nrow =total_mse, ncol = count_specialist)
+mean_ins_var_esp_flo = matrix(data = NA, nrow =total_mse, ncol = count_specialist)
+
+
+#Creating the Simulated Data
+
+for (q in 1:total_mse) {
+  var.model = 1
+  z <- c(rep(2,count_row))
+  s <- c(rep(2,count_row))
+  x.2 = rnorm(count_row,0,1)
+  x.3 = rnorm(count_row,0,2)
+  x.4 = rnorm(count_row,0,4) 
+  x.5 <-rnorm(count_row,0,8)
+  
+  covariable = data.frame(x.2,x.3,x.4,x.5)
+  
+  covariable.alpha <- data.frame(rep(1,count_row),covariable)
+  y = 0.5*covariable[,1]-
+    0.4*covariable[,2]+
+    0.3*covariable[,3]+
+    0.2*covariable[,4]+
+    rnorm(count_row,0,(var.model)^(1/2))
+  
+  for (i in 1:count_row){
+    for (j in 1:count_specialist){
+      deviation.specialist[i,j] = covariable[i,j]
+    }
+  }
+  
+  for (i in 1:count_row){
+    for (j in 1:count_specialist){
+      specialist[i,j] = y[i] + rnorm(1,0,abs(deviation.specialist[i,j]))
+    }
+  }
+
+  df = data.frame(y,covariable)
+  covariable.alpha <- data.frame(rep(1,count_row),covariable)
+# Extract covariates from dataset
+
+
+# Split data into training, validation, and testing sets
+
+fractionTraining   <- percentual_train
+fractionValidation <- percentual_validation
+fractionTest       <- percentual_test
+
+# Compute sample sizes for each set
+sampleSizeTraining   <- floor(fractionTraining   * nrow(df))
+sampleSizeValidation <- floor(fractionValidation * nrow(df))
+sampleSizeTest       <- floor(fractionTest       * nrow(df))
+
+# Generate indices for splitting data into training, validation, and testing sets
+indicesTraining    <- sort(sample(seq_len(nrow(df)), size=sampleSizeTraining))
+indicesNotTraining <- setdiff(seq_len(nrow(df)), indicesTraining)
+indicesValidation  <- sort(sample(indicesNotTraining, size=sampleSizeValidation))
+indicesTest        <- setdiff(indicesNotTraining, indicesValidation)
+
+# Assign data to training, validation, and testing sets
+train   <- df[indicesTraining, ]
+validation <- df[indicesValidation, ]
+test      <- df[indicesTest, ]
+
+# Assign specialist assessments to corresweighting sets
+specialist.train<- specialist[indicesTraining, ]
+specialist.test <- specialist[indicesTest, ]
+specialist.validation <- specialist[indicesValidation, ]
+
+# Assign covariate data to corresweighting sets
+covariable.train <- covariable[indicesTraining, ]
+covariable.test <- covariable[indicesTest, ]
+covariable.validation <- covariable[indicesValidation, ]
+
+# Display dimensions of validation, test, and training sets
+dim(covariable.validation)
+dim(covariable.test)
+dim(covariable.train)
+
+#Applying the empirical variance technique as an estimation of the expert's expertise to various traditional methods, such as Lasso, Forest, Least Squares, and Tree.
+
+# LASSO
+pred.specialist.lasso.validation = matrix(data = NA, nrow = length(validation$y), ncol = count_specialist)
+pred.lasso = matrix(data = NA, nrow = length(train$y), ncol = count_specialist)
+Z_specialist.lasso = matrix(data = NA, nrow = length(validation$y), ncol = count_specialist)
+var_est_esp.lasso = matrix(data = NA, nrow = length(train$y), ncol = count_specialist)
+pred.z.lasso = matrix(data = NA, nrow = length(train$y), ncol = count_specialist)
+mean_var_est_esp.lasso = NULL
+y_vali_lasso = 1:length(validation$y)
+y_lasso_y_train = specialist.train
+validation_Z_specialist.lasso = matrix(data = NA, nrow = length(validation$y), ncol = count_specialist)
+model.lasso = vector("list", count_specialist)
+
+ for (i in 1:count_specialist) {
+    df.specialist.train = data.frame(specialist.train[,i], covariable.train)
+    df.specialist.validation = data.frame(specialist.validation[,i], covariable.validation)
+    df.specialist.test = data.frame(specialist.test[,i], covariable.test)
+    
+    x_lasso_y_train = model.matrix(~.-1, df.specialist.train[,-c(1)])
+    y_lasso_y_train = specialist.train[,i]
+    x_validation_lasso = model.matrix(~.-1, df.specialist.validation[,-c(1)])
+    y_validation_lasso = specialist.validation[i]
+    x_test_lasso = model.matrix(~.-1, df.specialist.test[,-c(1)])
+    y_test_lasso = specialist.test[i]
+    
+    # Ajuste do modelo LASSO
+    model.lasso = cv.glmnet(x_lasso_y_train, y_lasso_y_train, alpha = 1)
+    
+    pred.specialist.lasso.validation[,i] <- predict(model.lasso, s = model.lasso$lambda.min,
+                                            newx = x_validation_lasso)
+    
+    Z_specialist.lasso[,i] = log((pred.specialist.lasso.validation[,i] - specialist.validation[,i])^2) 
+    
+    validation_Z_specialist.lasso = data.frame(Z_specialist.lasso[,i], x_validation_lasso) 
+    
+    x_vali_lasso = model.matrix(~.-1, validation_Z_specialist.lasso[,-c(1)])
+    y_vali_lasso = Z_specialist.lasso[,i]
+    
+    dim(x_vali_lasso)
+    length(y_vali_lasso)
+    
+    z.esp.lasso = cv.glmnet(x_vali_lasso, y_vali_lasso, alpha = 1)
+    pred.z.lasso[,i] <- predict(z.esp.lasso, s = z.esp.lasso$lambda.min,
+                                newx = x_lasso_y_train)
+    
+    var_est_esp.lasso[,i] = exp(1)^pred.z.lasso[,i]
+    
+    mean_var_est_esp[i] = mean(var_est_esp.lasso[,i])
+  }
+  
+  mean_ins_var_esp_lasso[q,] = (mean_var_est_esp)
+  
+  #################################################################################################
+  multi = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  soma = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  somaweighte = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  y.weight.train_lasso = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  inverso.var_est_esp_lasso = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  for (i in 1:length(train$y)){
+    for (j in 1:count_specialist){
+      inverso.var_est_esp_lasso[i,j] = 1/var_est_esp.lasso[i,j]
+      multi[i,j] = specialist.train[i,j]*inverso.var_est_esp_lasso[i,j]
+      soma[i] = sum(multi[i,])
+      somaweighte[i] = sum(inverso.var_est_esp_lasso[i,])
+      y.weight.train_lasso[i] = soma[i]/somaweighte[i]
+    }}
+  
+  banco.weight.train_lasso =  data.frame(y.weight.train_lasso,covariable.train)
+  
+  x.lasso.train = model.matrix(~.-1, banco.weight.train_lasso[,-c(1)])
+  y.lasso.train = banco.weight.train_lasso$y.weight.train_lasso
+  
+  mod.weight.ins_lasso =  cv.glmnet(x.lasso.train,  y.lasso.train, alpha =  1)
+  pred.lasso.ins <- predict(mod.weight.ins_lasso,s = mod.weight.ins_lasso$lambda.min,
+                            newx = x_test_lasso)
+  
+  mse.lasso.weight_ins[q] = sum(( pred.lasso.ins-test$y)^2)/length(test$y)
+  w.lasso.weight  = ( pred.lasso.ins -test$y)^2
+  w_devitation.lasso.weight  = sd(w.lasso.weight)
+  se.lasso.weight_ins[q]= w_devitation.lasso.weight /sqrt(length(test$y))
+
+  ####################FLORESTA####################################################
+  
+  pred.specialist.floresta.validation = matrix(data = NA, nrow =length(validation$y), ncol = count_specialist)
+  pred.specialist.floresta = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  pred.mod1_Z_specialist = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  Z_specialist = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  var_est_esp_flo = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  validation_Z_specialist_flo = matrix(data = NA, nrow =length(validation$y), ncol = ncol(validation))
+  mean_var_est_esp = NULL
+  Z_specialist_flo_vali = matrix(data = NA, nrow =length(validation$y), ncol = count_specialist)
+  for (i in 1:count_specialist) {
+    df.specialist.train = data.frame(specialist.train[,i],covariable.train)
+    df.specialist.validation = data.frame(specialist.validation[i],covariable.validation)
+    df.specialist.test = data.frame(specialist.test[i],covariable.test)
+    
+    modelo_esp_floresta <- ranger(specialist.train[,i]~.,data=df.specialist.train[,-1])
+    pred.specialist.floresta.validation[,i] = predict(modelo_esp_floresta, data=df.specialist.validation[,-1])$predictions
+    Z_specialist_flo_vali[,i] = (log((pred.specialist.floresta.validation[,i] - specialist.validation[,i])^2)) #y do expert
+    
+    validation_Z_specialist_flo = data.frame(Z_specialist_flo_vali[,i],validation[,-1]) 
+    
+    modelZ_specialist_flo = ranger(validation_Z_specialist_flo[,1]~.,data=df.specialist.validation[,-1])
+    pred.mod1_Z_specialist[,i] = predict(modelZ_specialist_flo, data=df.specialist.train[,-1])$predictions
+    var_est_esp_flo[,i] = exp(1)^pred.mod1_Z_specialist[,i]
+    
+    mean_var_est_esp[i]=mean(var_est_esp_flo[,i])
+  }
+  
+  mean_ins_var_esp_flo[q,] = (mean_var_est_esp)
+ 
+  #################################################################################################
+  multi = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  soma = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  somaweighte = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  y.weight.train_flo = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  inverso.var_est_esp_flo = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  for (i in 1:length(train$y)){
+    for (j in 1:count_specialist){
+      inverso.var_est_esp_flo[i,j] = 1/var_est_esp_flo[i,j]
+      multi[i,j] = specialist.train[i,j]*inverso.var_est_esp_flo[i,j]
+      soma[i] = sum(multi[i,])
+      somaweighte[i] = sum(inverso.var_est_esp_flo[i,])
+      y.weight.train_flo[i] = soma[i]/ somaweighte[i]
+    }}
+  
+  banco.weight.train =  data.frame(y.weight.train_flo,covariable.train)
+  
+  modelo.floresta.weight = ranger(y.weight.train_flo~.,data=banco.weight.train)
+  pred.test.weight_flo = predict(modelo.floresta.weight, data=covariable.test)$predictions
+  mse_forest_weight_ins[q] = sum((pred.test.weight_flo-test$y)^2)/length(test$y)
+  w.flo.weight  = (pred.test.weight_flo -test$y)^2
+  w_devitation.flo.weight  = sd(w.flo.weight)
+  se_forest_weight_ins[q]= w_devitation.flo.weight /sqrt(length(test$y))
+    
+  #REGRESSAO LINEAR weightERADA POR ins
+  Z_specialist.lm.validation = matrix(data = NA, nrow =length(validation$y), ncol = count_specialist)
+  pred.specialist.lm.validation = matrix(data = NA, nrow =length(validation$y), ncol = count_specialist)
+  pred.specialist.lm = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  pred.lm = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  Z_specialist.lm = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  var_est_esp_reg = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  mean_var_est_esp = NULL
+  for (i in 1:count_specialist) {
+    df.specialist.train = data.frame(specialist.train[,i],covariable.train)
+    df.specialist.validation = data.frame(specialist.validation[,i],covariable.validation)
+    df.specialist.test = data.frame(specialist.test[,i],covariable.test)
+    
+    modelo.lm <- lm(specialist.train[,i]~.,data=df.specialist.train)
+    names(df.specialist.validation)[names(df.specialist.validation) == "specialist.validation...i."] <- "specialist.train...i."
+    pred.specialist.lm.validation[,i] = predict(modelo.lm, newdata=df.specialist.validation)
+    Z_specialist.lm.validation[,i] = log(((  pred.specialist.lm.validation[,i] - specialist.validation[,i])^2)+0.000000000000000000000000000000001) #y do expert
+  
+    validation_Z_specialist = data.frame(Z_specialist.lm.validation[,i],covariable.validation) 
+    modelZ_specialist_lm <- lm(validation_Z_specialist[, 1] ~ ., data = validation_Z_specialist[,-1])
+    
+    # Garantir que covariable.train é um data frame
+    covariable.train <- as.data.frame(covariable.train)
+    
+    # Realizar a predição e armazenar os valores na matriz pred.lm
+    pred.lm[, i] <- predict(modelZ_specialist_lm, newdata = covariable.train)
+    var_est_esp_reg[,i] = exp(1)^pred.lm[,i]
+    
+    mean_var_est_esp[i]=mean(var_est_esp_reg[,i])
+  }
+  mean_ins_var_esp_reg[q,] = (mean_var_est_esp)
+  
+  #################################################################################################
+  multi = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  soma = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  somaweighte = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  y.weight.train_reg = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  inverso.var_est_esp_reg = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  for (i in 1:length(train$y)){
+    for (j in 1:count_specialist){
+      inverso.var_est_esp_reg[i,j] = 1/var_est_esp_reg[i,j]
+      multi[i,j] = specialist.train[i,j]*inverso.var_est_esp_reg[i,j]
+      soma[i] = sum(multi[i,])
+      somaweighte[i] = sum(inverso.var_est_esp_reg[i,])
+      y.weight.train_reg[i] = soma[i]/ somaweighte[i]
+    }}
+  
+  banco.weight.train =  data.frame(y.weight.train_reg,covariable.train)
+  
+  #modelo lm weight por inservação
+  
+  modelo.lm.weight = lm(y.weight.train_reg~.,data=banco.weight.train)
+  pred.test.weight_reg = predict(modelo.lm.weight, newdata=as.data.frame(covariable.test))
+  mse.lm.weight_ins[q] = sum((pred.test.weight_reg-test$y)^2)/length(test$y)
+  w.lm.weight  = (pred.test.weight_reg -test$y)^2
+  w_devitation.lm.weight  = sd(w.lm.weight)
+  se.lm.weight_ins[q]= w_devitation.lm.weight /sqrt(length(test$y))
+
+
+  #######################ARVORE weightERADA POR ins###########################
+  
+  modelZ_specialist_arv = NULL
+  validation_Z_specialist_arv = matrix(data = NA, nrow =length(validation$y), ncol = ncol(validation))
+  pred.specialist.arvore = matrix(data = NA, nrow =length(validation$y), ncol = count_specialist)
+  pred.mod1_Z_specialist_arv = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  Z_specialist_arv = matrix(data = NA, nrow =length(validation$y), ncol = count_specialist)
+  var_est_esp_arv = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  train_Z_specialist = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  mean_var_est_esp = NULL
+  df.specialist.validation_arv = matrix(data = NA, nrow =length(validation$y), ncol = ncol(validation))
+  for (i in 1:count_specialist) {
+    df.specialist.train_arv = data.frame(specialist.train[,i],covariable.train)
+    df.specialist.validation_arv = data.frame(specialist.validation,covariable.validation)
+    df.specialist.test_arv = data.frame(specialist.test,covariable.test)
+    
+    modelo_esp_arvore<- rpart(df.specialist.train_arv[,i]~.,data=df.specialist.train_arv[,-1])
+    pred.specialist.arvore[,i] = predict(modelo_esp_arvore, newdata=df.specialist.validation_arv[,-1])
+    Z_specialist_arv[,i] = log((pred.specialist.arvore[,i] - specialist.validation[,i])^2) #y do expert
+    
+    validation_Z_specialist_arv = data.frame(Z_specialist_arv[,i],validation[,-1]) 
+    modelZ_specialist_arv = rpart(validation_Z_specialist_arv[,1]~.,data= validation_Z_specialist_arv[,-1])
+    pred.mod1_Z_specialist_arv[,i] = predict(modelZ_specialist_arv, newdata=train[,-1])
+    var_est_esp_arv[,i] = exp(1)^pred.mod1_Z_specialist_arv[,i]
+    
+    mean_var_est_esp[i]=mean(var_est_esp_arv[,i])}
+  
+  mean_ins_var_esp_arv[q,] = (mean_var_est_esp)
+  
+  multi = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  soma = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  somaweighte = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  y.weight.train_arv = matrix(data = NA, nrow =length(train$y), ncol = 1)
+  inverso.var_est_esp_arv = matrix(data = NA, nrow =length(train$y), ncol = count_specialist)
+  for (i in 1:length(train$y)){
+    for (j in 1:count_specialist){
+      inverso.var_est_esp_arv[i,j] = 1/var_est_esp_arv[i,j]
+      multi[i,j] = specialist.train[i,j]*inverso.var_est_esp_arv[i,j]
+      soma[i] = sum(multi[i,])
+      somaweighte[i] = sum(inverso.var_est_esp_arv[i,])
+      y.weight.train_arv[i] = soma[i]/ somaweighte[i]
+    }}
+  
+  banco.weight.train =  data.frame(y.weight.train_arv,covariable.train)
+  
+  modelo.weight_arv = rpart(y.weight.train_arv~.,data=banco.weight.train)
+  pred.test.weight_arv = predict(modelo.weight_arv, newdata=covariable.test)
+  mse.tree.weight_ins[q] = sum((pred.test.weight_arv-test$y)^2)/length(test$y)
+  w.arv.weight  = (pred.test.weight_arv -test$y)^2
+  w_devitation.arv.weight  = sd(w.arv.weight)
+  se.tree.weight_ins[q]= w_devitation.arv.weight /sqrt(length(test$y))
+
+  
+  #The END WEAR-INS
+  
+  
+  
+  
+  # Train a Random Forest model using all features
+  fit_forest_gold <- ranger(y ~ ., data = train)
+  # Predict using the trained model on the test set
+  pred_forest_gold <- predict(fit_forest_gold, data = test)$predictions
+  # Compute Mean Squared Error (MSE) for the forest model
+  mse_forest_gold[q] <- sum((pred_forest_gold - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w_forest_gold <- (pred_forest_gold - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_forest_gold_deviation <- sd(w_forest_gold)
+  # Compute standard error
+  se_forest_gold[q] <- w_forest_gold_deviation / sqrt(length(test$y))
+  
+  # Compute the mean predictions across specialists
+  mean.specialist = rowMeans(specialist) 
+  # Create a dataset combining mean specialist predictions and covariates
+  banco.specialist = data.frame(mean.specialist, covariable)
+  # Split the dataset into training, validation, and testing sets
+  train.specialist <- banco.specialist[indicesTraining, ] 
+  test.specialist <- banco.specialist[indicesTest, ] 
+  validation.specialist <- banco.specialist[indicesValidation, ]
+  
+  # Train a Random Forest model using mean specialist predictions
+  fit_forest_mean_specialist <- ranger(mean.specialist ~ ., data = train.specialist)
+  # Predict using the trained model on the test set
+  pred_forest_mean_specialist <- predict(fit_forest_mean_specialist, data = test.specialist)$predictions
+  
+  # Compute MSE for the mean specialist model
+  mse_forest_mean_specialist[q] <- sum((pred_forest_mean_specialist - test$y)^2) / length(test$y) 
+  # Compute squared errors
+  w_forest_mean_specialist <- (pred_forest_mean_specialist - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_forest_mean_specialist_deviation <- sd(w_forest_mean_specialist) 
+  # Compute standard error
+  se_forest_mean_specialist[q] <- w_forest_mean_specialist_deviation / sqrt(length(test$y))
+  
+  #####################################################
+  # Compute MSE for individual specialists using Random Forest
+  specialist.mse.weight_forest <- NULL
+  for (i in 1:count_specialist) {
+    specialistecialistatest <- specialist.test[, i]
+    specialistecialistatrain <- specialist.train[, i]
+    specialistecilistavalidation <- specialist.validation[, i]
+    df.weight.test <- data.frame(specialistecialistatest, covariable.test)
+    df.weight.train <- data.frame(specialistecialistatrain, covariable.train)
+    df.weight.validation <- data.frame(specialistecilistavalidation, covariable.validation)
+    
+    # Train a Random Forest model for each specialist
+    model_forest <- ranger(specialistecialistatrain ~ ., data = df.weight.train)
+    # Predict using the trained model
+    pred.specialist_forest <- predict(model_forest, data = df.weight.validation)$predictions
+    
+    # Compute MSE for each specialist
+    specialist.mse.weight_forest[i] <- sum((pred.specialist_forest - specialist.validation[, i])^2) / length(validation$y)
+  }
+  
+  # Compute weighted specialist predictions
+  specialist.train.weight_forest <- specialist.train 
+  specialist.test.weight_forest <- specialist.test
+  
+  for (j in 1:count_specialist) {
+    specialist.train.weight_forest[, j] <- (specialist.train[, j] * (1 / specialist.mse.weight_forest[j]))
+    specialist.test.weight_forest[, j] <- (specialist.test[, j] * (1 / specialist.mse.weight_forest[j]))
+  }
+  
+  # Store the weights of specialists in a matrix
+  weight.specialist.forest <- t(specialist.mse.weight_forest)
+  
+  # Compute row sums for training and test specialist data
+  specialist.train.weight.soma_forest <- rowSums(specialist.train.weight_forest)
+  specialist.test.weight.soma_forest <- rowSums(specialist.test.weight_forest)
+  
+  # Convert MSE specialist weights to a data frame
+  specialist.mse.weight_forest <- data.frame(specialist.mse.weight_forest)
+  
+  # Compute denominator for weighted specialist calculations
+  denominador_forest <- colSums((1 / specialist.mse.weight_forest))
+  
+  mean.train.weight_notas_forest <- specialist.train.weight.soma_forest / denominador_forest
+  mean.test.weight_notas_forest <- specialist.test.weight.soma_forest / denominador_forest
+  
+  df.mean.train.weight_notas_forest <- data.frame(mean.train.weight_notas_forest, covariable.train)
+  df.mean.test.weight_notas_forest <- data.frame(mean.test.weight_notas_forest, covariable.test)
+  
+  # Create final dataset for model training
+  fit10_mean.weight_forest <- ranger(mean.train.weight_notas_forest ~ ., data = df.mean.train.weight_notas_forest)
+  predict10_mean.weight_forest <- predict(fit10_mean.weight_forest, data = df.mean.test.weight_notas_forest)$predictions
+  
+  # Compute MSE for weighted forest model
+  mse_forest_weight[q] = sum((predict10_mean.weight_forest - test$y)^2) / length(test$y) 
+  # Compute standard deviation of squared errors
+  w6 = (predict10_mean.weight_forest - test$y)^2 
+  w6_deviation = sd(w6)
+  # Compute standard error
+  se_forest_weight[q] = w6_deviation / sqrt(length(test$y))
+  
+  ######################### Decision Tree Model ##############################
+  
+  # Train a Decision Tree model
+  fit_tree_gold = rpart(y ~ ., data = train) 
+  # Predict using the trained model
+  pred_tree_gold <- predict(fit_tree_gold, newdata = test)
+  
+  # Compute MSE for the tree model
+  mse_tree_gold[q] = sum((pred_tree_gold - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w_tree_gold = (pred_tree_gold - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_tree_gold_deviation = sd(w_tree_gold) 
+  # Compute standard error
+  se_tree_gold[q] = w_tree_gold_deviation / sqrt(length(test$y))
+  
+  
+  #############tree 
+  
+  # Compute the mean predictions across specialists
+  mean.specialist = rowMeans(specialist) 
+  # Create a dataset combining the mean specialist predictions and covariates
+  banco.specialist = data.frame(mean.specialist, covariable)
+  # Split the specialist dataset into training, validation, and testing sets
+  train.specialist <- banco.specialist[indicesTraining, ] 
+  test.specialist <- banco.specialist[indicesTest,] 
+  validation.specialist <- banco.specialist[indicesValidation, ]
+  
+  # Train a Decision Tree model using mean specialist predictions
+  fit_tree_mean_specialist = rpart(mean.specialist ~ ., data = train.specialist)
+  # Predict using the trained model on the test data
+  pred_tree_mean_specialist <- predict(fit_tree_mean_specialist, newdata = test.specialist)
+  
+  # Compute MSE for the mean specialist model
+  mse.tree.mean[q] = sum((pred_tree_mean_specialist - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w_tree_mean_specialist = (pred_tree_mean_specialist - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_tree_mean_specialist_deviation = sd(w_tree_mean_specialist) 
+  # Compute standard error
+  se_tree_mean[q] = w_tree_mean_specialist_deviation / sqrt(length(test$y))
+  
+  #####################################################
+  # Compute MSE for individual specialists using Decision Trees
+  specialist.mse.weight_tree = NULL
+  for (i in 1:count_specialist) {
+    specialistecialistatest = specialist.test[, i]
+    specialistecialistatrain = specialist.train[, i]
+    specialistecilistavalidation = specialist.validation[, i]
+    df.weight.test = data.frame(specialistecialistatest, covariable.test)
+    df.weight.train = data.frame(specialistecialistatrain, covariable.train)
+    df.weight.validation = data.frame(specialistecilistavalidation, covariable.validation)
+    
+    # Train a Decision Tree model for each specialist
+    model_tree = rpart(specialistecialistatrain ~ ., df.weight.train)
+    # Predict using the trained model
+    pred.specialist_tree <- predict(model_tree, newdata = df.weight.validation)
+    
+    # Compute MSE for each specialist
+    specialist.mse.weight_tree[i] <- sum((pred.specialist_tree - specialist.validation[, i])^2) / length(validation$y)
+  }
+  
+  # Compute weighted specialist predictions
+  specialist.train.weight_tree = specialist.train 
+  specialist.test.weight_tree = specialist.test
+  
+  for (j in 1:count_specialist) {
+    specialist.train.weight_tree[, j] <- (specialist.train[, j] * (1 / specialist.mse.weight_tree[j]))
+    specialist.test.weight_tree[, j] <- (specialist.test[, j] * (1 / specialist.mse.weight_tree[j]))
+  }
+  
+  # Compute final weighted specialist model
+  weight.specialist.tree = t(specialist.mse.weight_tree)
+  
+  # Compute row sums for training and test specialist data
+  specialist.train.weight.soma_tree = rowSums(specialist.train.weight_tree)
+  specialist.test.weight.soma_tree = rowSums(specialist.test.weight_tree)
+  
+  specialist.mse.weight_tree = data.frame(specialist.mse.weight_tree) 
+  
+  denominador_tree = colSums((1 / specialist.mse.weight_tree))
+  
+  mean.train.weight_notas_tree <- specialist.train.weight.soma_tree / denominador_tree 
+  mean.test.weight_notas_tree <- specialist.test.weight.soma_tree / denominador_tree
+  
+  df.mean.train.weight_notas_tree <- data.frame(mean.train.weight_notas_tree,covariable.train)
+  df.mean.test.weight_notas_tree <- data.frame(mean.test.weight_notas_tree,covariable.test)
+  
+  # Create final dataset for model training
+  fit10_mean.weight_tree <- rpart(mean.train.weight_notas_tree ~ ., data = df.mean.train.weight_notas_tree)
+  predict10_mean.weight_tree <- predict(fit10_mean.weight_tree, newdata = df.mean.test.weight_notas_tree)
+  
+  # Compute MSE for weighted tree model
+  mse.tree.weight[q] = sum((predict10_mean.weight_tree - test$y)^2) / length(test$y) 
+  # Compute standard deviation of squared errors
+  w6 = (predict10_mean.weight_tree - test$y)^2 
+  w6_deviation = sd(w6)
+  # Compute standard error
+  se.tree.weight[q] = w6_deviation / sqrt(length(test$y))
+  
+  ######################### Linear Regression Model ##############################
+  
+  # Train a Linear Regression model
+  fit_lm_gold = lm(y ~ ., data = train)
+  # Predict using the trained model
+  pred_lm_gold <- predict(fit_lm_gold, newdata = test)
+  
+  # Compute MSE for the linear regression model
+  mse_lm_gold = sum((pred_lm_gold - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w_lm_gold = (pred_lm_gold - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_lm_gold_deviation = sd(w_lm_gold) 
+  # Compute standard error
+  se_lm_gold = w_lm_gold_deviation / sqrt(length(test$y))
+  
+  # Compute the mean predictions across specialists for linear regression
+  mean.specialist = rowMeans(specialist) 
+  banco.specialist = data.frame(mean.specialist, covariable)
+  # Split the specialist dataset into training, validation, and testing sets
+  train.specialist <- banco.specialist[indicesTraining, ] 
+  test.specialist <- banco.specialist[indicesTest,] 
+  validation.specialist <- banco.specialist[indicesValidation, ]
+  
+  # Train a Linear Regression model using mean specialist predictions
+  fit_lm_mean_specialist = lm(mean.specialist ~ ., data = train.specialist)
+  # Predict using the trained model
+  pred_lm_mean_specialist <- predict(fit_lm_mean_specialist, newdata = test.specialist)
+  
+  # Compute MSE for the mean specialist model
+  mse.lm.mean[q] = sum((pred_lm_mean_specialist - test$y)^2) / length(test$y) 
+  # Compute squared errors
+  w_lm_mean_specialist = (pred_lm_mean_specialist - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_lm_mean_specialist_deviation = sd(w_lm_mean_specialist)
+  # Compute standard error
+  se_lm_mean[q] = w_lm_mean_specialist_deviation / sqrt(length(test$y))
+  
+  
+  # Compute MSE for individual specialists using Linear Regression
+  specialist.mse.weight_lm = NULL
+  for (i in 1:count_specialist) {
+    specialistecialistatest = specialist.test[, i]
+    specialistecialistatrain = specialist.train[, i]
+    specialistecilistavalidation = specialist.validation[, i]
+    df.weight.test = data.frame(specialistecialistatest, covariable.test)
+    df.weight.train = data.frame(specialistecialistatrain, covariable.train)
+    df.weight.validation = data.frame(specialistecilistavalidation, covariable.validation)
+    
+    # Train a Linear Regression model for each specialist
+    model_lm = lm(specialistecialistatrain ~ ., df.weight.train)
+    # Predict using the trained model
+    pred.specialist_lm <- predict(model_lm, newdata = df.weight.validation)
+    
+    # Compute MSE for each specialist
+    specialist.mse.weight_lm[i] <- sum((pred.specialist_lm - specialist.validation[, i])^2) / length(validation$y)
+  }
+  
+  # Compute weighted specialist predictions
+  specialist.train.weight_lm = specialist.train 
+  specialist.test.weight_lm = specialist.test
+  
+  for (j in 1:count_specialist) {
+    specialist.train.weight_lm[, j] <- (specialist.train[, j] * (1 / specialist.mse.weight_lm[j]))
+    specialist.test.weight_lm[, j] <- (specialist.test[, j] * (1 / specialist.mse.weight_lm[j]))
+  }
+  
+  # Compute final weighted specialist model
+  weight.specialist.lm = t(specialist.mse.weight_lm)
+  
+  # Compute row sums for training and test specialist data
+  specialist.train.weight.soma_lm = rowSums(specialist.train.weight_lm) 
+  specialist.test.weight.soma_lm = rowSums(specialist.test.weight_lm)
+  
+  specialist.mse.weight_lm = data.frame(specialist.mse.weight_lm) 
+  
+  denominador_lm = colSums((1 / specialist.mse.weight_lm))
+  
+  mean.train.weight_notas_lm <- specialist.train.weight.soma_lm / denominador_lm
+  mean.test.weight_notas_lm <- specialist.test.weight.soma_lm / denominador_lm
+  
+  df.mean.train.weight_notas_lm <-data.frame(mean.train.weight_notas_lm,covariable.train)
+  df.mean.test.weight_notas_lm <-data.frame(mean.test.weight_notas_lm,covariable.test)
+  
+  # Create final dataset for model training
+  fit10_mean.weight_lm <- lm(mean.train.weight_notas_lm ~ ., data = df.mean.train.weight_notas_lm)
+  predict10_mean.weight_lm <- predict(fit10_mean.weight_lm, newdata = df.mean.test.weight_notas_lm, type="response")
+  
+  # Compute MSE for weighted linear regression model
+  mse.lm.weight[q] = sum((predict10_mean.weight_lm - test$y)^2) / length(test$y) 
+  # Compute standard deviation of squared errors
+  w6 = (predict10_mean.weight_lm - test$y)^2 
+  w6_deviation = sd(w6)
+  # Compute standard error
+  se.lm.weight[q] = w6_deviation / sqrt(length(test$y))
+  
+  ######################### LASSO Regression ##############################
+  
+  # Prepare data matrices for LASSO regression
+  x_lasso_y_train = model.matrix(~.-1, train[, -c(1)]) 
+  y_lasso_y_train = train$y 
+  x_test = model.matrix(~.-1, test[, -c(1)]) 
+  y_test = test$y
+  
+  # Train LASSO regression model
+  model_y = cv.glmnet(x_lasso_y_train, y_lasso_y_train, alpha = 1)
+  # Predict using the trained LASSO model
+  pred.specialist_y <- predict(model_y, s = model_y$lambda.min, newx = x_test)
+  
+  # Compute MSE for LASSO regression
+  mse_lasso_gold[q] = sum((pred.specialist_y - test$y)^2) / length(test$y) 
+  # Compute squared errors
+  w_lasso_gold = (pred.specialist_y - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_lasso_gold_deviation = sd(w_lasso_gold) 
+  # Compute standard error
+  se_lasso_gold[q] = w_lasso_gold_deviation / sqrt(length(test$y))
+  
+  ######################### LASSO Regression with Mean Specialist ##############################
+  
+  # Prepare data matrices for LASSO regression using mean specialist predictions
+  x_lasso_y_mean_train = model.matrix(~.-1, train.specialist[, -c(1)])
+  y_lasso_y_mean_train = train.specialist$mean.specialist 
+  x_test_mean = model.matrix(~.-1, test.specialist[, -c(1)])
+  
+  # Train LASSO regression model using mean specialist data
+  model_mean = cv.glmnet(x_lasso_y_mean_train, y_lasso_y_mean_train, alpha = 1)
+  # Predict using the trained LASSO model
+  pred.specialist_mean <- predict(model_mean, s = model_mean$lambda.min, newx = x_test_mean)
+  
+  # Compute MSE for LASSO regression using mean specialist data
+  mse_lasso_mean_specialist[q] = sum((pred.specialist_mean - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w_lasso_mean_specialist = (pred.specialist_mean - test$y)^2 
+  # Compute standard deviation of squared errors
+  w_lasso_mean_specialist_deviation = sd(w_lasso_mean_specialist) 
+  # Compute standard error
+  se_lasso_mean[q] = w_lasso_mean_specialist_deviation / sqrt(length(test$y))
+  
+  # Initialize variables for LASSO regression
+  model = NULL 
+  df.weight = NULL 
+  specialistecialistaconsiderado = NULL 
+  specialist.mse.weight = NULL
+  specialist.mse.weight.lasso = NULL
+  
+  # Compute MSE for individual specialists using LASSO regression
+  for (i in 1:count_specialist) {
+    specialistecialistatest = specialist.test[, i]
+    specialistecialistatrain = specialist.train[, i]
+    specialistecilistavalidation = specialist.validation[, i]
+    df.weight.test = data.frame(specialistecialistatest, covariable.test)
+    df.weight.train = data.frame(specialistecialistatrain, covariable.train)
+    df.weight.validation = data.frame(specialistecilistavalidation, covariable.validation)
+    
+    # Prepare data matrices for LASSO regression
+    x_train_l = model.matrix(~.-1, df.weight.train[, -c(1)])
+    y_train = df.weight.train$specialistecialistatrain
+    x_test = model.matrix(~.-1, df.weight.test[, -c(1)])
+    y_test = df.weight.test$specialistecialistatest
+    x_validation = model.matrix(~.-1, df.weight.validation[, -c(1)])
+    y_validation = df.weight.validation$specialistecilistavalidation
+    
+    # Train LASSO regression model
+    model = cv.glmnet(x_train_l, y_train, alpha = 1)
+    # Predict using the trained model
+    pred.specialist <- predict(model, s = model$lambda.min, newx = x_validation)
+    
+    # Compute MSE for each specialist
+    specialist.mse.weight.lasso[i] <- sum((pred.specialist - specialist.validation[, i])^2) / length(validation$y)
+  }
+  
+  # Compute weighted specialist predictions
+  specialist.train.weight = specialist.train 
+  specialist.test.weight = specialist.test 
+  specialist.validation.weight = specialist.validation
+  
+  for (j in 1:count_specialist) {
+    specialist.train.weight[, j] <- (specialist.train[, j] * (1 / specialist.mse.weight.lasso[j]))
+    specialist.test.weight[, j] <- (specialist.test[, j] * (1 / specialist.mse.weight.lasso[j]))
+  }
+  
+  # Compute final weighted specialist model
+  weight.specialist.lasso = t(specialist.mse.weight.lasso) 
+  specialist.train.weight = data.frame(specialist.train.weight) 
+  specialist.test.weight = data.frame(specialist.test.weight)
+  
+  attach(specialist.train.weight) 
+  attach(specialist.test.weight)
+  
+  # Compute row sums for training and test specialist data
+  specialist.train.weight.soma = rowSums(specialist.train.weight) 
+  specialist.test.weight.soma = rowSums(specialist.test.weight) 
+  specialist.mse.weight = data.frame(specialist.mse.weight.lasso)
+  
+  denominador = colSums(1 / specialist.mse.weight)
+  
+  mean.train.weight_notas <- specialist.train.weight.soma / denominador
+  mean.test.weight_notas <- specialist.test.weight.soma / denominador
+  
+  df.mean.train.weight_notas <-data.frame(mean.train.weight_notas,covariable.train)
+  df.mean.test.weight_notas <-data.frame(mean.test.weight_notas,covariable.test) 
+  x_train_weight_lasso =model.matrix(~.-1, df.mean.train.weight_notas[,-c(1)]) 
+  y_train_weight_lasso= df.mean.train.weight_notas$mean.train.weight_notas
+  x_test_weight_lasso = model.matrix(~.-1,df.mean.test.weight_notas[,-c(1)]) 
+  y_test_weight_lasso = df.mean.test.weight_notas$mean.test.weight_notas 
+  dim(x_train_weight_lasso)
+  
+  
+  # Create final dataset for model training
+  fit10_mean.weight_lasso <- cv.glmnet(x_train_weight_lasso, y_train_weight_lasso, alpha = 1)
+  predict_mean_weight_lasso <- predict(fit10_mean.weight_lasso, s = fit10_mean.weight_lasso$lambda.min, newx = x_test_weight_lasso)
+  
+  # Compute MSE for weighted LASSO regression model
+  mse.lasso.weight[q] = sum((predict_mean_weight_lasso - test$y)^2) / length(test$y) 
+  # Compute standard deviation of squared errors
+  w10 = (predict_mean_weight_lasso - test$y)^2 
+  w10_deviation = sd(w10)
+  # Compute standard error
+  se.lasso.weight[q] = w10_deviation / sqrt(length(test$y))
+  
+  # Train a Linear Regression model
+  modelo1 <- lm(y ~ ., data = train)
+  # Display model summary
+  summary(modelo1)
+  # Predict using the trained model
+  pred.mod1 = predict(modelo1, newdata = test)
+  
+  # Compute MSE for the linear regression model
+  mse.mod1[q] = sum((pred.mod1 - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w1 = (pred.mod1 - test$y)^2
+  # Compute standard deviation of squared errors
+  w1_deviation = sd(w1)
+  # Compute standard error
+  se.mod1[q] = w1_deviation / sqrt(length(test$y))
+  
+  ######################### MODEL WITH MEAN SPECIALIST ##############################
+  
+  # Compute mean predictions from specialists
+  mean.specialist = rowMeans(specialist)
+  # Create a dataset combining mean specialist predictions and covariates
+  banco.specialist = data.frame(mean.specialist, covariable)
+  # Split the dataset into training and testing
+  train.specialist <- banco.specialist[indicesTraining, ]
+  test.specialist <- banco.specialist[indicesTest, ]
+  
+  # Train a Linear Regression model using mean specialist predictions
+  modelo2 <- lm(mean.specialist ~ ., data = train.specialist)
+  # Predict using the trained model
+  pred.mod2 = predict(modelo2, newdata = test.specialist)
+  
+  # Compute MSE for the mean specialist model
+  mse.mod2[q] = sum((pred.mod2 - test$y)^2) / length(test$y)
+  # Compute squared errors
+  w2 = (pred.mod2 - test$y)^2
+  # Compute standard deviation of squared errors
+  w2_deviation = sd(w2)
+  # Compute standard error
+  se.mod2[q] = w2_deviation / sqrt(length(test$y))
+  
+  ######################### WEIGHTED MODEL #################################
+  
+  # Add a column of ones for bias term in regression
+  covariable.alpha <- data.frame(rep(1, count_row), covariable)
+  covariable.alpha.train <- covariable.alpha[indicesTraining, ]
+  covariable.alpha.test <- covariable.alpha[indicesTest, ]
+  covariable.alpha.validation <- covariable.alpha[indicesValidation, ]
+  specialist.train <- specialist[indicesTraining, ]
+  specialist.test <- specialist[indicesTest, ]
+  specialist.validation <- specialist[indicesValidation, ]
+  
+  # Initialize coefficient matrix
+  coeficientes = data.frame(coef(modelo2))
+  # Replace NA values with 0 in coefficients
+  coeficientes[is.na(coeficientes[,1]), 1] <- 0
+  
+  lambda = NULL 
+  lambdas = NULL 
+  iteracao = 20
+  for(i in 1:iteracao){
+    #PASSO E
+    passo.ezao =  (as.matrix(covariable.alpha.train) %*% as.matrix((coeficientes[,1])))
+    #PASSO M
+    variabilidade = matrix (NA, ncol = count_specialist, nrow = count_row*percentual_train)
+    for (k in 1:count_specialist) {
+      for (j in 1:count_row*percentual_train){
+        variabilidade[j,k] = ((specialist.train[j,k]) - passo.ezao[j])^2
+      }
+    }
+    sum.variabilidade = colSums(variabilidade)
+    reverse_lambda = sum.variabilidade / (count_row * percentual_train)
+    lambda = 1 / reverse_lambda
+    
+    # Ridge Regression Regularization
+    lambda_ridge <- 10000
+    XtX <- t(as.matrix(covariable.alpha.train)) %*% as.matrix(covariable.alpha.train)
+    XtX_regularizado <- XtX + diag(lambda_ridge, ncol(XtX))
+    parte1w <- solve(XtX_regularizado)
+    parte3w = (as.matrix(specialist.train) %*% lambda) / sum(lambda)
+    parte4w = as.matrix(t(covariable.alpha.train)) %*% parte3w
+    w = parte1w %*% parte4w
+    coeficientes = w
+  }
+  
+  lambdas = matrix(c(rnorm(count_specialist*total_mse,0,1)), ncol = count_specialist)
+  lambdas[q] = t(lambda)
+  
+  ######################### MODEL COMPARISON #################################
+  
+  predict.com.em = as.matrix(covariable.alpha.test) %*% as.matrix(coeficientes[,1])
+  mse.mod3[q] = sum((predict.com.em - test$y)^2) / length(test$y)
+  w3 = (predict.com.em - test$y)^2
+  w3_deviation = sd(w3)
+  se.mod3[q] = w3_deviation / sqrt(length(test$y))
+
+  
+}
+
+
+
+
+
+
+  # Model names
+  MODELS = c("LINEAR REGRESSION WITH WEIGHTED MEAN PER OBSERVATION",
+             "FOREST WITH WEIGHTED MEAN PER OBSERVATION",
+             "TREE WITH WEIGHTED MEAN PER OBSERVATION",
+             "LASSO WITH WEIGHTED MEAN PER OBSERVATION",
+             "RAYKAR",
+             "LINEAR REGRESSION WITH WEIGHTED MEAN",
+             "FOREST WITH WEIGHTED MEAN",
+             "TREE WITH WEIGHTED MEAN",
+             "LASSO WITH WEIGHTED MEAN",
+             "LINEAR REGRESSION WITH ARITHMETIC MEAN",
+             "FOREST WITH ARITHMETIC MEAN",
+             "TREE WITH ARITHMETIC MEAN",
+             "LASSO WITH ARITHMETIC MEAN",
+             "LINEAR REGRESSION WITH TRUE Y",
+             "FOREST WITH TRUE Y",
+             "TREE WITH TRUE Y",
+             "LASSO WITH TRUE Y"
+  )
+  
+  # MSE and standard errors for each model
+  mean.MSE =  round(c(mean(mse.lm.weight_ins),
+                      mean(mse_forest_weight_ins),
+                      mean(mse.tree.weight_ins),
+                      mean(mse.lasso.weight_ins),
+                      mean(mse.mod3),
+                      mean(mse.lm.weight),
+                      mean(mse_forest_weight),
+                      mean(mse.tree.weight),
+                      mean(mse.lasso.weight),
+                      mean(mse.lm.mean),
+                      mean(mse_forest_mean_specialist),
+                      mean(mse.tree.mean),
+                      mean(mse_lasso_mean_specialist),
+                      mean(mse_lm_gold),
+                      mean(mse_forest_gold),
+                      mean(mse_tree_gold),
+                      mean(mse_lasso_gold)), 4)
+                  
+# Create a list with all MSE variables
+  mse_list <- list(
+    mse.lm.weight_ins,
+    mse_forest_weight_ins,
+    mse.tree.weight_ins,
+    mse.lasso.weight_ins,
+    mse.mod3,
+    mse.lm.weight,
+    mse_forest_weight,
+    mse.tree.weight,
+    mse.lasso.weight,
+    mse.lm.mean,
+    mse_forest_mean_specialist,
+    mse.tree.mean,
+    mse_lasso_mean_specialist,
+    mse_lm_gold,
+    mse_forest_gold,
+    mse_tree_gold,
+    mse_lasso_gold
+  )
+  
+  # Compute the total number of MSE values
+  total_mse <- length(mse.lm.weight_ins)
+  
+  # Function to calculate the standard error
+  calculate_standard_error <- function(mse_values, total_mse) {
+    return(round((sqrt(sum((mse_values - mean(mse_values))^2) / (total_mse - 1))) / sqrt(total_mse), 5))
+  }
+  
+  # Apply the function to all MSE variables in the list
+  ERROR <- sapply(mse_list, calculate_standard_error, total_mse = total_mse)
+  
+  # Display results
+  print(ERROR)
+  
+  # Create results dataframe
+  result = data.frame(MODELS, mean.MSE, ERROR)
+  result
+  
+  # Sort results by MSE
+  result_1 = result %>% arrange((mean.MSE))
+  formattable(result_1)
+  
+  
+  
+  lamb_mean = matrix(data = NA, nrow = 1, ncol = count_specialist)
+  for(count_specialist in 1:count_specialist){
+    lamb_mean[1,count_specialist] = mean(abs(lambdas[,count_specialist]))
+  }
+  lamb_mean
